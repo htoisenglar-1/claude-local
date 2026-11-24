@@ -1,0 +1,63 @@
+#!/bin/sh
+set -eu
+
+ollama=/opt/homebrew/bin/ollama
+model=gemma4:e2b-claude
+case "${1-}" in
+    gemma) shift ;;
+    qwen) model=qwen3.5:4b-mlx; shift ;;
+    granite) model=granite4.2:3b-q4_K_M; shift ;;
+esac
+model_picker='{
+    "modelPicker": {
+        "replaceBuiltInOptions": true,
+        "options": [
+            {"model": "gemma4:e2b-claude", "label": "Gemma 4 E2B"},
+            {"model": "qwen3.5:4b-mlx", "label": "Qwen 3.5 4B MLX"},
+            {"model": "granite4.2:3b-q4_K_M", "label": "Granite 4.2 3B"}
+        ]
+    }
+}'
+state_dir="$HOME/.local/state/claude-local"
+job=local.claude-local.ollama
+export OLLAMA_HOST=127.0.0.1:11435
+export CLAUDE_CODE_MAX_CONTEXT_TOKENS=8192
+export CLAUDE_CODE_MAX_OUTPUT_TOKENS=2048
+export CLAUDE_CODE_DISABLE_THINKING=1
+
+if [ ! -x "$ollama" ] || [ ! -x "$HOME/.local/bin/claude" ]; then
+    printf '%s\n' 'This launcher needs Homebrew Ollama and the native Claude Code CLI.' >&2
+    exit 1
+fi
+
+ollama_ready() {
+    /usr/bin/curl -fsS --max-time 1 "http://$OLLAMA_HOST/api/version" >/dev/null 2>&1
+}
+
+if ! ollama_ready; then
+    mkdir -p "$state_dir"
+    if ! /bin/launchctl print "gui/$(/usr/bin/id -u)/$job" >/dev/null 2>&1; then
+        /bin/launchctl submit -l "$job" -o "$state_dir/ollama.out.log" -e "$state_dir/ollama.err.log" -- \
+            /usr/bin/env "OLLAMA_HOST=$OLLAMA_HOST" OLLAMA_NO_CLOUD=1 OLLAMA_CONTEXT_LENGTH=8192 \
+            OLLAMA_FLASH_ATTENTION=1 OLLAMA_KV_CACHE_TYPE=q8_0 "$ollama" serve
+    fi
+    attempts=0
+    until ollama_ready; do
+        if [ "$attempts" -ge 30 ]; then
+            printf 'Local Ollama did not start. See %s/ollama.err.log\n' "$state_dir" >&2
+            exit 1
+        fi
+        attempts=$((attempts + 1))
+        sleep 1
+    done
+fi
+
+if ! "$ollama" show "$model" >/dev/null 2>&1; then
+    printf 'The local model %s is missing from Ollama.\n' "$model" >&2
+    exit 1
+fi
+
+export PATH="$HOME/.local/bin:$PATH"
+exec "$ollama" launch claude --model "$model" --yes -- \
+    --bare --settings "$model_picker" --effort low \
+    --tools Read,Glob,Grep,Edit,Write,Bash --permission-mode default "$@"
