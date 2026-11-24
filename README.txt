@@ -230,3 +230,26 @@ rm "$preset"
 ```
 
 Run `claude-local --version` again after the downloads finish. Use the model-picker and session commands earlier in this README to start working.
+
+## Remove a local model from Ollama
+
+Exit Claude Code or switch away from the model first. In Terminal, list the installed models on the standalone Ollama server:
+
+```sh
+export OLLAMA_HOST=127.0.0.1:11435
+ollama list
+```
+
+If Ollama is down, run `claude-local --version` to start it. Copy the exact tag you want to remove from the list. The example below removes Granite. Replace the example tag before running it if you mean to remove a different model.
+
+```sh
+MODEL='granite4.2:3b-q4_K_M'
+ollama rm "$MODEL"
+ollama list
+```
+
+To unload a running model from memory while keeping its download, use `ollama stop "$MODEL"`. Run `ollama pull "$MODEL"` if you want to download a removed model again. [Ollama CLI reference](https://docs.ollama.com/cli)
+
+If you added the removed model to `claude-local`, delete its shortcut from the `case` block and its entry from the `model_picker` options. If it was your default, also update the `model=` line to use an installed model. Reopen Claude Code to refresh the picker.
+
+The Gemma preset `gemma4:e2b-claude` and its base `gemma4:e2b-it-qat` share the downloaded model data. To remove Gemma entirely, remove both tags, unless you still use one of them.
